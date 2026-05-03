@@ -1,0 +1,41 @@
+{
+  // Visit https://aka.ms/tsconfig to read more about this file
+  "compilerOptions": {
+    // ─── File Layout ───────────────────────────────────────────────
+    "rootDir": "./src",
+    "outDir": "./dist",
+
+    // ─── Environment ───────────────────────────────────────────────
+    "module": "node16",
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "types": ["node"],
+
+    // ─── Module Resolution ─────────────────────────────────────────
+    "moduleResolution": "node16",
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "forceConsistentCasingInFileNames": true,
+
+    // ─── Strictness ────────────────────────────────────────────────
+    "strict": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitReturns": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+
+    // ─── Output ────────────────────────────────────────────────────
+    "sourceMap": true,
+    "declaration": false,
+    "removeComments": true,
+
+    // ─── Misc ──────────────────────────────────────────────────────
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "noUncheckedSideEffectImports": true,
+    "moduleDetection": "force"
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "tests", "**/*.spec.ts", "**/*.test.ts"]
+}

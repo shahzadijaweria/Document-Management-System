@@ -1,0 +1,19 @@
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Belt-and-suspenders: never commit env files anywhere
+.env
+.env.local
+.env.*.local
+
+# Build artifacts (per-folder gitignores already cover these too)
+node_modules/
+dist/
+.next/

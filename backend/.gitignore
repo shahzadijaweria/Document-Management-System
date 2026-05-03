@@ -1,0 +1,49 @@
+# ─── Dependencies ─────────────────────────────────
+node_modules/
+
+# ─── Build output ─────────────────────────────────
+dist/
+*.tsbuildinfo
+
+# ─── Environment files (never commit secrets) ────
+.env
+.env.local
+.env.*.local
+.env.development
+.env.production
+# but DO commit the example template:
+!.env.example
+
+# ─── Logs ─────────────────────────────────────────
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ─── OS files ────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ─── IDE / Editor ────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ─── Test coverage ───────────────────────────────
+coverage/
+*.lcov
+
+# ─── Local file uploads (temp before S3) ────────
+uploads/
+
+# ─── Local SQLite (if used in dev) ──────────────
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+/src/generated/prisma
