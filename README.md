@@ -21,6 +21,7 @@ A full-stack document management application with JWT authentication, AWS S3 fil
 - [API Endpoints](#api-endpoints)
 - [Socket.io Events](#socketio-events)
 - [Testing Instructions](#testing-instructions)
+- [Deployment (AWS EC2 + Docker)](#deployment-aws-ec2--docker)
 - [Troubleshooting](#troubleshooting)
 
 ---
@@ -517,6 +518,223 @@ To inspect online state from the server:
 memurai-cli smembers online:<userId>     # list of active socket IDs
 memurai-cli scard   online:<userId>      # count
 ```
+
+---
+
+## Deployment (AWS EC2 + Docker)
+
+This walkthrough deploys the **whole stack** (Postgres + Redis + backend + frontend) on a single EC2 instance using `docker compose`. S3 stays where it is.
+
+> **Cost note:** as of Feb 2024, AWS charges ~$0.005/hour for any public IPv4 address (running instances included). To minimise cost, **stop the instance** when not actively demoing — stopped instances release the auto-assigned IP and only cost storage (~$2.50/mo for 30 GB EBS). Restart it when needed; you'll get a NEW public IP each time and need to update env values + S3 CORS (steps below).
+
+### Phase 1 — Launch the EC2 instance
+
+1. **AWS Console** → **EC2** → **Launch instances**
+2. Configure:
+   - **Name:** `dms-server`
+   - **AMI:** Ubuntu Server 24.04 LTS (free tier eligible)
+   - **Instance type:** **t3.small** (2 GB RAM minimum — t3.micro / 1 GB is too small for 4 containers)
+   - **Key pair:** Create new → name `dms-key` → format `.pem` → **Download** (you can't redownload it, save it carefully)
+   - **Network → Edit → Create security group** with these inbound rules:
+
+     | Type | Port | Source | Description |
+     |---|---|---|---|
+     | SSH | 22 | My IP | Your access only |
+     | Custom TCP | 3000 | Anywhere (0.0.0.0/0) | Frontend |
+     | Custom TCP | 4000 | Anywhere (0.0.0.0/0) | Backend API + Socket.io |
+   - **Configure storage:** 30 GiB gp3
+3. **Launch instance**. Wait for state = **Running** (~30 s).
+4. From the instance details panel, **note the Public IPv4 address** — that's your access point. Call it `EC2_IP` from here on.
+
+> The auto-assigned public IP changes every time you Stop+Start the instance. Reboot keeps the same IP.
+
+### Phase 2 — Move the SSH key to a permanent location
+
+The PEM file probably landed in `Downloads/`.
+
+### Phase 3 — SSH in
+
+```powershell   (should be in same folder where key is poresent else move paste path of key)
+
+ssh -i dms-key.pem ubuntu@EC2_IP
+```
+
+First connection asks `Are you sure you want to continue connecting (yes/no/[fingerprint])?` — type `yes`.
+
+### Phase 4 — Install Docker + Git on the instance (one-time)
+
+```bash
+sudo apt update
+sudo apt install -y docker.io docker-compose-v2 git
+sudo usermod -aG docker ubuntu
+exit
+```
+
+Reconnect (the docker group change needs a fresh session):
+```powershell
+ssh -i dms-key.pem ubuntu@EC2_IP
+```
+
+Verify:
+```bash
+docker ps               # empty table = good
+docker compose version  # v2.x.x
+```
+
+### Phase 5 — Clone the repo
+
+Public repo:
+```bash
+git clone https://github.com/YOUR_USERNAME/dms.git
+cd dms
+```
+
+Private repo — use a Personal Access Token (Settings → Developer Settings → Personal access tokens → generate one with `repo` scope):
+```bash
+git clone https://YOUR_USERNAME:YOUR_TOKEN@github.com/YOUR_USERNAME/dms.git
+cd dms
+```
+
+### Phase 6 — Create `.env` with the EC2's IP
+
+```bash
+cp .env.docker.example .env
+nano .env
+```
+
+Fill in (replace `EC2_IP` with your actual public IP):
+
+```
+JWT_SECRET=<generate: openssl rand -base64 64>
+JWT_REFRESH_SECRET=<generate again — must differ>
+JWT_EXPIRES_IN=15m
+JWT_REFRESH_EXPIRES_IN=7d
+
+AWS_REGION=ap-south-1
+AWS_ACCESS_KEY_ID=AKIA...
+AWS_SECRET_ACCESS_KEY=...
+AWS_S3_BUCKET=your-bucket-name
+
+NEXT_PUBLIC_API_URL=http://EC2_IP:4000
+NEXT_PUBLIC_SOCKET_URL=http://EC2_IP:4000
+```
+
+Generate secrets in a separate terminal tab and paste:
+```bash
+openssl rand -base64 64
+```
+
+Save: `Ctrl+O`, `Enter`, `Ctrl+X`.
+
+### Phase 7 — Update CORS in `docker-compose.yml`
+
+```bash
+nano docker-compose.yml
+```
+
+Find the line `CORS_ORIGIN: http://localhost:3000` and change it to:
+```
+CORS_ORIGIN: http://EC2_IP:3000
+```
+
+Save and exit.
+
+### Phase 8 — Build and start everything
+
+```bash
+docker compose up --build -d
+```
+
+First build takes 5-10 min. Watch progress:
+```bash
+docker compose logs -f
+```
+
+You're looking for these lines (Ctrl+C to stop tailing — containers keep running):
+```
+dms-postgres  | database system is ready to accept connections
+dms-redis     | Ready to accept connections tcp
+dms-backend   | server listening {"port":4000,"env":"production",...}
+dms-backend   | redis connected
+dms-frontend  | Listening on 0.0.0.0:3000
+```
+
+### Phase 9 — Update S3 CORS for the new origin
+
+AWS Console → **S3** → your bucket → **Permissions** → **Cross-origin resource sharing** → Edit:
+
+```json
+[
+  {
+    "AllowedOrigins": [
+      "http://localhost:3000",
+      "http://EC2_IP:3000"
+    ],
+    "AllowedMethods": ["GET", "PUT", "POST", "DELETE"],
+    "AllowedHeaders": ["*"],
+    "ExposeHeaders": ["ETag"],
+    "MaxAgeSeconds": 3000
+  }
+]
+```
+
+### Phase 10 — Smoke test
+
+In your browser:
+1. `http://EC2_IP:4000/health` → JSON `{"status":"ok",...}`
+2. `http://EC2_IP:4000/ready` → JSON with `db.ok:true` and `redis.ok:true`
+3. `http://EC2_IP:3000` → Next.js login page → register → upload a file → confirm it lands in S3
+
+### Operations cheat sheet
+
+Run inside `~/dms/` on the EC2:
+
+| Need | Command |
+|---|---|
+| View running containers | `docker compose ps` |
+| Tail backend logs | `docker compose logs -f backend` |
+| Restart one service | `docker compose restart backend` |
+| Update from latest git | `git pull && docker compose up --build -d` |
+| Stop everything | `docker compose down` |
+| Stop AND wipe DB+Redis volumes | `docker compose down -v` (destructive) |
+| Open psql | `docker compose exec postgres psql -U dms` |
+| Open Redis CLI | `docker compose exec redis redis-cli` |
+| Free up disk | `docker system prune -a` |
+
+### Stopping / restarting later (cost control)
+
+To pause costs when you're not actively using it:
+
+1. EC2 Console → **Instances** → select `dms-server` → **Instance state** → **Stop instance**
+2. Compute now $0/hour. Storage (~$2.50/mo) keeps the disk + your work.
+
+To resume:
+
+1. **Start instance** → wait for Running
+2. **The public IP will be different** — get the new one from the instance details
+3. SSH in, then update on the box:
+   ```bash
+   cd ~/dms
+   nano .env                  # update NEXT_PUBLIC_API_URL + NEXT_PUBLIC_SOCKET_URL
+   nano docker-compose.yml    # update CORS_ORIGIN
+   docker compose up --build -d
+   ```
+4. Update S3 bucket CORS with the new IP
+
+### Deployment troubleshooting
+
+| Symptom | Likely cause | Fix |
+|---|---|---|
+| `docker compose up` hangs at "pulling postgres" | Slow network | `docker compose pull` first to pre-download, then `up` |
+| Frontend loads but API calls fail with CORS error | `CORS_ORIGIN` mismatch | Edit `docker-compose.yml`, then `docker compose up -d backend` |
+| Frontend API calls go to `localhost:4000` (404) | `NEXT_PUBLIC_API_URL` wasn't set in `.env` BEFORE the build | Edit `.env`, then `docker compose up --build -d frontend` (forces fresh build) |
+| Browser can't reach `http://IP:3000` | Security group missing port 3000 | EC2 → Security Groups → your group → Inbound → add Custom TCP 3000 from 0.0.0.0/0 |
+| `docker: command not found` after Phase 4 | Didn't reconnect SSH after `usermod -aG docker` | `exit` and reconnect |
+| Containers OOM-killing randomly | t3.micro instead of t3.small | Resize: stop instance → Actions → Instance settings → Change instance type → t3.small → start |
+| Backend container restarts in a loop | DB or Redis env not yet ready / wrong env value | `docker compose logs backend` — read the actual error. Most often `JWT_SECRET` < 32 chars. |
+| Backend dies with `SyntaxError: Cannot use 'import.meta' outside a module` (in `dist/generated/prisma/client.js`) | Prisma 7's `prisma-client` generator defaults to ESM output, but our compiled JS is CJS | Ensure `prisma/schema.prisma` has `moduleFormat = "cjs"` in the generator block. Then `npx prisma generate` locally, commit, redeploy. |
+| `Identity file dms-key.pem not accessible` on local SSH | PEM not in current working directory | Use full path: `ssh -i "$env:USERPROFILE\.ssh\dms-key.pem" ubuntu@EC2_IP` |
+| File upload returns 403 from S3 | Bucket CORS doesn't include `http://EC2_IP:3000` | Phase 9 — add it |
 
 ---
 

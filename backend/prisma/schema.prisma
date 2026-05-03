@@ -3,8 +3,13 @@
 // Generated client lives at src/generated/prisma (gitignored).
 
 generator client {
-  provider = "prisma-client"
-  output   = "../src/generated/prisma"
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  // Force CommonJS output. Prisma 7's "prisma-client" generator defaults to
+  // ESM, which uses `import.meta.url` and breaks when our compiled dist/ is
+  // executed by plain `node` (we're a CJS project, "type": "commonjs").
+  // Symptom without this: `SyntaxError: Cannot use 'import.meta' outside a module`.
+  moduleFormat = "cjs"
 }
 
 datasource db {
