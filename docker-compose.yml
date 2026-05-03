@@ -77,9 +77,11 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        # Baked into the client bundle at build time (NEXT_PUBLIC_*)
-        NEXT_PUBLIC_API_URL: http://localhost:4000
-        NEXT_PUBLIC_SOCKET_URL: http://localhost:4000
+        # Baked into the client bundle at BUILD time (NEXT_PUBLIC_*).
+        # Reads from your top-level .env; falls back to localhost for native dev.
+        # In EC2 deploy, set both to http://<elastic-ip>:4000 in .env.
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4000}
+        NEXT_PUBLIC_SOCKET_URL: ${NEXT_PUBLIC_SOCKET_URL:-http://localhost:4000}
     container_name: dms-frontend
     ports:
       - "3000:3000"
