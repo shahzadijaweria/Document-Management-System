@@ -1,6 +1,9 @@
-# Document Management System (DMS) — with Real-Time Features
+# Document Management System (DMS) — with Real-Time Features (Deployed on AWS)
 
 A full-stack document management application with JWT authentication, AWS S3 file storage, Redis caching, and Socket.io real-time updates.
+You can check here: http://13.192.232.198:3000/login 
+(You can sign up a new user role, admin role already created)
+(Admin email: admin@gmail.com, password: Admin4949$)
 
 ---
 
